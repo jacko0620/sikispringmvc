@@ -6,6 +6,9 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+import java.util.logging.Logger;
 
 /**
  * @author yxzheng
@@ -13,11 +16,17 @@ import java.io.IOException;
  */
 public class SikiDispatcherServlet extends HttpServlet {
 
+    Logger logger = Logger.getLogger(this.getClass().getName());
+
+    private Properties properties = new Properties();
+
     @Override
     public void init(ServletConfig config) throws ServletException {
         super.init(config);
-        System.out.println("init start");
+        logger.info("init start");
+
         // 1.加载配置文件，获取的是，扫描的路径
+        doLoadConfig(config);
 
         // 2.根据配置文件，扫描路径下的所有文件，初始化它们
 
@@ -38,5 +47,23 @@ public class SikiDispatcherServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
         super.doPost(req, resp);
+    }
+
+    private void doLoadConfig(ServletConfig config) {
+        String location = config.getInitParameter("contextConfigLocation");
+        InputStream is = this.getClass().getClassLoader().getResourceAsStream(location);
+        try {
+            properties.load(is);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (is != null) {
+                try {
+                    is.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
     }
 }

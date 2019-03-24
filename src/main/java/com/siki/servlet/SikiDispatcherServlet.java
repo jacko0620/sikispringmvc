@@ -10,7 +10,9 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.*;
@@ -66,12 +68,61 @@ public class SikiDispatcherServlet extends HttpServlet {
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        super.doGet(req, resp);
+        doDispatch(req, resp);
     }
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        super.doPost(req, resp);
+        doDispatch(req, resp);
+    }
+
+    private void doDispatch(HttpServletRequest req, HttpServletResponse resp) {
+        if (handlerMapping.isEmpty()) {
+            return;
+        }
+        String contextPath = req.getContextPath();
+        String url = req.getRequestURI().replace(contextPath,"");
+        if (!handlerMapping.containsKey(url)) {
+            try {
+                resp.getWriter().write("404");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        Method method = (Method) handlerMapping.get(url);
+        Class[] paramTypes = method.getParameterTypes();
+        Annotation[][] ans = method.getParameterAnnotations();
+        Map<String,String[]> paramMap = req.getParameterMap();
+
+        int length = paramTypes.length;
+        Object[] paramValues = new Object[length];
+        for (int i = 0;i< length;i++){
+            String reqParam = paramTypes[i].getSimpleName();
+            if("HttpServletRequest".equals(reqParam)) {
+                paramValues[i] = req;
+            }
+            if("HttpServletResponse".equals(reqParam)) {
+                paramValues[i] = resp;
+            }
+            if ("String".equals(reqParam)) {
+                for (Map.Entry<String,String[]> entry:paramMap.entrySet()) {
+                    String value = Arrays.toString(entry.getValue()).replaceAll("\\[|\\]","");
+                    if (ans[i] != null && ans[i].length > 0 && entry.getKey().equals(((SikiRequestParam)ans[i][0]).value())) {
+                        paramValues[i] = value;
+                    } else {
+                        paramValues[i] = "";
+                    }
+                }
+            }
+
+            try {
+                method.invoke(controllerMap.get(url),paramValues);
+            } catch (IllegalAccessException e) {
+                e.printStackTrace();
+            } catch (InvocationTargetException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     private void doLoadConfig(ServletConfig config) {

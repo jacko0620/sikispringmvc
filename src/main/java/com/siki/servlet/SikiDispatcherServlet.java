@@ -1,5 +1,6 @@
 package com.siki.servlet;
 
+import com.siki.annotation.SikiAutowired;
 import com.siki.annotation.SikiController;
 import com.siki.annotation.SikiRepository;
 import com.siki.annotation.SikiService;
@@ -12,6 +13,7 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Field;
 import java.net.URL;
 import java.util.*;
 import java.util.logging.Logger;
@@ -48,10 +50,64 @@ public class SikiDispatcherServlet extends HttpServlet {
         logger.info("instance finish");
 
         // 4.注入第三步拿到的类
+        doAutowired();
+        logger.info("autowired finish");
 
         // 5.初始化HandlerMapping，将@SikiRequestMapping里面配置的url路径和实际的方法对应上
 
         // 6.注入第五步拿到的类
+    }
+
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        super.doGet(req, resp);
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        super.doPost(req, resp);
+    }
+
+    private void doLoadConfig(ServletConfig config) {
+        String location = config.getInitParameter("contextConfigLocation");
+        InputStream is = this.getClass().getClassLoader().getResourceAsStream(location);
+        try {
+            properties.load(is);
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (is != null) {
+                try {
+                    is.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private void doAutowired() {
+        Field[] fields;
+        for (Map.Entry<String,Object> entry:ioc.entrySet()) {
+            fields = entry.getValue().getClass().getDeclaredFields();
+            for (Field field : fields ){
+                if (!field.isAnnotationPresent(SikiAutowired.class)) {
+                    continue;
+                }
+                SikiAutowired sikiAutowired = field.getAnnotation(SikiAutowired.class);
+                String value = sikiAutowired.value();
+                if ("".equals(value)) {
+                    value = field.getType().getName();
+                }
+                // 允许通过反射方式访问私有化属性
+                field.setAccessible(true);
+                try {
+                    field.set(entry.getValue(),ioc.get(value));
+                } catch (IllegalAccessException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
     }
 
     private void doInstance() {
@@ -115,34 +171,6 @@ public class SikiDispatcherServlet extends HttpServlet {
                 // 文件
                 className = scanPackage + "." + file.getName().replace(".class",""); // .class
                 classNames.add(className);
-            }
-        }
-    }
-
-    @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        super.doGet(req, resp);
-    }
-
-    @Override
-    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-        super.doPost(req, resp);
-    }
-
-    private void doLoadConfig(ServletConfig config) {
-        String location = config.getInitParameter("contextConfigLocation");
-        InputStream is = this.getClass().getClassLoader().getResourceAsStream(location);
-        try {
-            properties.load(is);
-        } catch (IOException e) {
-            e.printStackTrace();
-        } finally {
-            if (is != null) {
-                try {
-                    is.close();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
             }
         }
     }

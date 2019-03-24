@@ -1,9 +1,6 @@
 package com.siki.servlet;
 
-import com.siki.annotation.SikiAutowired;
-import com.siki.annotation.SikiController;
-import com.siki.annotation.SikiRepository;
-import com.siki.annotation.SikiService;
+import com.siki.annotation.*;
 
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
@@ -14,6 +11,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.*;
 import java.util.logging.Logger;
@@ -31,6 +29,10 @@ public class SikiDispatcherServlet extends HttpServlet {
     private List<String> classNames = new ArrayList<>();
 
     private Map<String,Object> ioc = new HashMap<>();
+
+    private Map<String,Object> handlerMapping = new HashMap<>();
+
+    private Map<String,Object> controllerMap = new HashMap<>();
 
     @Override
     public void init(ServletConfig config) throws ServletException {
@@ -54,8 +56,12 @@ public class SikiDispatcherServlet extends HttpServlet {
         logger.info("autowired finish");
 
         // 5.初始化HandlerMapping，将@SikiRequestMapping里面配置的url路径和实际的方法对应上
+        doHandlerMapping();
+        logger.info("mapping finish");
 
         // 6.注入第五步拿到的类
+        doAutowiredController();
+        logger.info("autowired controller finish");
     }
 
     @Override
@@ -89,6 +95,30 @@ public class SikiDispatcherServlet extends HttpServlet {
     private void doAutowired() {
         Field[] fields;
         for (Map.Entry<String,Object> entry:ioc.entrySet()) {
+            fields = entry.getValue().getClass().getDeclaredFields();
+            for (Field field : fields ){
+                if (!field.isAnnotationPresent(SikiAutowired.class)) {
+                    continue;
+                }
+                SikiAutowired sikiAutowired = field.getAnnotation(SikiAutowired.class);
+                String value = sikiAutowired.value();
+                if ("".equals(value)) {
+                    value = field.getType().getName();
+                }
+                // 允许通过反射方式访问私有化属性
+                field.setAccessible(true);
+                try {
+                    field.set(entry.getValue(),ioc.get(value));
+                } catch (IllegalAccessException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private void doAutowiredController() {
+        Field[] fields;
+        for (Map.Entry<String,Object> entry:controllerMap.entrySet()) {
             fields = entry.getValue().getClass().getDeclaredFields();
             for (Field field : fields ){
                 if (!field.isAnnotationPresent(SikiAutowired.class)) {
@@ -171,6 +201,42 @@ public class SikiDispatcherServlet extends HttpServlet {
                 // 文件
                 className = scanPackage + "." + file.getName().replace(".class",""); // .class
                 classNames.add(className);
+            }
+        }
+    }
+
+    private void doHandlerMapping() {
+        for (Map.Entry<String,Object> entry : ioc.entrySet()) {
+            Class<?> clazz = entry.getValue().getClass();
+            if (!clazz.isAnnotationPresent(SikiController.class)) {
+                continue;
+            }
+            String baseUrl = "";
+            if (clazz.isAnnotationPresent(SikiRequestMapping.class)) {
+                SikiRequestMapping sikiRequestMapping = clazz.getAnnotation(SikiRequestMapping.class);
+                baseUrl = sikiRequestMapping.value();
+                if (!baseUrl.startsWith("/")) {
+                    baseUrl = "/" + baseUrl;
+                }
+            }
+            Method[] methods = clazz.getMethods();
+            for (Method method:methods) {
+                if (!method.isAnnotationPresent(SikiRequestMapping.class)) {
+                    continue;
+                }
+                SikiRequestMapping sikiRequestMapping = method.getAnnotation(SikiRequestMapping.class);
+                String url = sikiRequestMapping.value();
+                if (!url.startsWith("/")) {
+                    url = "/" + url;
+                }
+                try {
+                    handlerMapping.put(baseUrl + url,method);
+                    controllerMap.put(baseUrl + url,clazz.newInstance());
+                } catch (InstantiationException e) {
+                    e.printStackTrace();
+                } catch (IllegalAccessException e) {
+                    e.printStackTrace();
+                }
             }
         }
     }

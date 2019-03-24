@@ -5,8 +5,12 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 import java.util.logging.Logger;
 
@@ -20,6 +24,8 @@ public class SikiDispatcherServlet extends HttpServlet {
 
     private Properties properties = new Properties();
 
+    private List<String> classNames = new ArrayList<>();
+
     @Override
     public void init(ServletConfig config) throws ServletException {
         super.init(config);
@@ -29,6 +35,9 @@ public class SikiDispatcherServlet extends HttpServlet {
         doLoadConfig(config);
 
         // 2.根据配置文件，扫描路径下的所有文件，初始化它们
+        String scanPackage = properties.getProperty("scanPackage"); // com.siki→com/siki
+        doScan(scanPackage);
+        logger.info("scan finish");
 
         // 3.拿到扫描的类，通过java反射机制，实例化这些类，并且装进ioc容器(Map<String,Object>)中
 
@@ -37,6 +46,23 @@ public class SikiDispatcherServlet extends HttpServlet {
         // 5.初始化HandlerMapping，将@SikiRequestMapping里面配置的url路径和实际的方法对应上
 
         // 6.注入第五步拿到的类
+    }
+
+    private void doScan(String scanPackage) {
+        String packageName = scanPackage.replaceAll("\\.","/");
+        URL url = this.getClass().getClassLoader().getResource(packageName);
+        File dir = new File(url.getFile());
+        String className;
+        for (File file:dir.listFiles()) {
+            if (file.isDirectory()) {
+                // 文件夹
+                doScan(scanPackage + "." + file.getName());
+            } else {
+                // 文件
+                className = scanPackage + "." + file.getName().replace(".class",""); // .class
+                classNames.add(className);
+            }
+        }
     }
 
     @Override

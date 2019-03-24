@@ -1,5 +1,9 @@
 package com.siki.servlet;
 
+import com.siki.annotation.SikiController;
+import com.siki.annotation.SikiRepository;
+import com.siki.annotation.SikiService;
+
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -9,9 +13,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 import java.util.logging.Logger;
 
 /**
@@ -25,6 +27,8 @@ public class SikiDispatcherServlet extends HttpServlet {
     private Properties properties = new Properties();
 
     private List<String> classNames = new ArrayList<>();
+
+    private Map<String,Object> ioc = new HashMap<>();
 
     @Override
     public void init(ServletConfig config) throws ServletException {
@@ -40,12 +44,62 @@ public class SikiDispatcherServlet extends HttpServlet {
         logger.info("scan finish");
 
         // 3.拿到扫描的类，通过java反射机制，实例化这些类，并且装进ioc容器(Map<String,Object>)中
+        doInstance();
+        logger.info("instance finish");
 
         // 4.注入第三步拿到的类
 
         // 5.初始化HandlerMapping，将@SikiRequestMapping里面配置的url路径和实际的方法对应上
 
         // 6.注入第五步拿到的类
+    }
+
+    private void doInstance() {
+        if (classNames.isEmpty()) {
+            return;
+        }
+        try {
+            Class<?> clazz;
+            for (String className:classNames) {
+                clazz = Class.forName(className);
+                if (clazz.isAnnotationPresent(SikiController.class)) {
+                    // 控制层
+                    ioc.put(toFirstWordLower(clazz.getSimpleName()),clazz.newInstance());
+                } else if (clazz.isAnnotationPresent(SikiService.class)) {
+                    // 服务层
+                    // impl
+                    SikiService sikiService =  clazz.getAnnotation(SikiService.class);
+                    String value = sikiService.value();
+                    if ("".equals(value)) {
+                        value = toFirstWordLower(clazz.getSimpleName());
+                    }
+                    Object instance = clazz.newInstance();
+                    ioc.put(value,instance);
+                    // service
+                    for (Class ins:clazz.getInterfaces()) {
+                        ioc.put(ins.getName(),instance);
+                    }
+                } else if (clazz.isAnnotationPresent(SikiRepository.class)) {
+                    // dao
+                    SikiRepository sikiRepository = clazz.getAnnotation(SikiRepository.class);
+                    // impl
+                    String value = sikiRepository.value();
+                    if ("".equals(value)) {
+                        value = toFirstWordLower(clazz.getSimpleName());
+                    }
+                    Object instance = clazz.newInstance();
+                    ioc.put(value,instance);
+                    // service
+                    for (Class ins:clazz.getInterfaces()) {
+                        ioc.put(ins.getName(),instance);
+                    }
+                } else {
+                    continue;
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void doScan(String scanPackage) {
@@ -91,5 +145,11 @@ public class SikiDispatcherServlet extends HttpServlet {
                 }
             }
         }
+    }
+
+    private String toFirstWordLower(String str) {
+        char[] strArray = str.toCharArray();
+        strArray[0] += 32;
+        return String.valueOf(strArray);
     }
 }

@@ -109,8 +109,7 @@ public class SikiDispatcherServlet extends HttpServlet {
                     String value = Arrays.toString(entry.getValue()).replaceAll("\\[|\\]","");
                     if (ans[i] != null && ans[i].length > 0 && entry.getKey().equals(((SikiRequestParam)ans[i][0]).value())) {
                         paramValues[i] = value;
-                    } else {
-                        paramValues[i] = "";
+                        break;
                     }
                 }
             }
